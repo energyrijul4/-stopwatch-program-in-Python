@@ -1,0 +1,29 @@
+import time
+
+def stopwatch():
+    input("Press Enter to start the stopwatch...")
+    start_time = time.time()
+    print("Stopwatch started!")
+    
+    try:
+        input("Press Enter to stop the stopwatch...")
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        
+        minutes = int(elapsed_time // 60)
+        seconds = elapsed_time % 60
+        
+        print(f"Time elapsed: {minutes} minutes {seconds:.2f} seconds")
+        
+    except KeyboardInterrupt:
+        print("\nStopwatch stopped!")
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        
+        minutes = int(elapsed_time // 60)
+        seconds = elapsed_time % 60
+        
+        print(f"Time elapsed: {minutes} minutes {seconds:.2f} seconds")
+
+if __name__ == "__main__":
+    stopwatch()
