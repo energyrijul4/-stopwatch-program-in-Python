@@ -1,0 +1,222 @@
+import tkinter as tk
+from tkinter import messagebox, ttk
+import sqlite3
+from datetime import datetime
+import time
+import pygame
+import csv
+
+class StopwatchApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Modified Stopwatch")
+        self.root.geometry("500x600")
+
+        # Initialize Pygame for sound
+        pygame.mixer.init()
+
+        # Initialize SQLite database
+        self.conn = sqlite3.connect("stopwatch.db")
+        self.create_tables()
+
+        # Stopwatch variables
+        self.running = False
+        self.start_time = 0
+        self.elapsed_time = 0
+        self.lap_times = []
+        self.session_id = None
+
+        # GUI Elements
+        self.theme = "dark"
+        self.root.configure(bg="#2C2C2C" if self.theme == "dark" else "#FFFFFF")
+
+        # Time display
+        self.time_var = tk.StringVar(value="00:00:00.0")
+        tk.Label(root, textvariable=self.time_var, font=("Arial", 40, "bold"), fg="white" if self.theme == "dark" else "black", bg="#2C2C2C" if self.theme == "dark" else "#FFFFFF").pack(pady=10)
+
+        # Theme selection
+        tk.Label(root, text="Select Theme:", font=("Arial", 12), fg="white" if self.theme == "dark" else "black", bg="#2C2C2C" if self.theme == "dark" else "#FFFFFF").pack()
+        self.theme_var = tk.StringVar(value="Dark")
+        ttk.Combobox(root, textvariable=self.theme_var, values=["Dark", "Light"], state="readonly").pack()
+        self.theme_var.trace("w", self.update_theme)
+
+        # Category input
+        tk.Label(root, text="Session Category:", font=("Arial", 12), fg="white" if self.theme == "dark" else "black", bg="#2C2C2C" if self.theme == "dark" else "#FFFFFF").pack(pady=5)
+        self.category_var = tk.StringVar(value="General")
+        ttk.Combobox(root, textvariable=self.category_var, values=["General", "Running", "Studying", "Work", "Other"], state="readonly").pack(pady=5)
+
+        # Buttons
+        tk.Button(root, text="Start/Stop", command=self.toggle_stopwatch, font=("Arial", 12)).pack(pady=5)
+        tk.Button(root, text="Lap", command=self.record_lap, font=("Arial", 12)).pack(pady=5)
+        tk.Button(root, text="Reset", command=self.reset_stopwatch, font=("Arial", 12)).pack(pady=5)
+        tk.Button(root, text="View Laps", command=self.view_laps, font=("Arial", 12)).pack(pady=5)
+        tk.Button(root, text="View Statistics", command=self.view_statistics, font=("Arial", 12)).pack(pady=5)
+        tk.Button(root, text="Export to CSV", command=self.export_to_csv, font=("Arial", 12)).pack(pady=5)
+
+        # Lap display
+        self.lap_var = tk.StringVar(value="Laps: 0")
+        tk.Label(root, textvariable=self.lap_var, font=("Arial", 12), fg="white" if self.theme == "dark" else "black", bg="#2C2C2C" if self.theme == "dark" else "#FFFFFF").pack(pady=10)
+
+        # Start updating time
+        self.update_time()
+
+    def create_tables(self):
+        cursor = self.conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                category TEXT NOT NULL,
+                start_time TEXT NOT NULL
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS laps (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id INTEGER NOT NULL,
+                lap_number INTEGER NOT NULL,
+                lap_time REAL NOT NULL,
+                FOREIGN KEY (session_id) REFERENCES sessions(id)
+            )
+        ''')
+        self.conn.commit()
+
+    def update_time(self):
+        if self.running:
+            elapsed = time.time() - self.start_time + self.elapsed_time
+            hours = int(elapsed // 3600)
+            minutes = int((elapsed % 3600) // 60)
+            seconds = elapsed % 60
+            self.time_var.set(f"{hours:02d}:{minutes:02d}:{seconds:04.1f}")
+        self.root.after(100, self.update_time)
+
+    def visual_feedback(self, success=True):
+        color = "green" if success else "red"
+        for _ in range(3):
+            self.root.configure(bg=color)
+            self.root.update()
+            self.root.after(100)
+            self.root.configure(bg="#2C2C2C" if self.theme == "dark" else "#FFFFFF")
+            self.root.update()
+            self.root.after(100)
+
+    def play_sound(self, action="start"):
+        try:
+            sound_file = {"start": "start.wav", "stop": "stop.wav", "lap": "lap.wav"}[action]
+            pygame.mixer.Sound(sound_file).play()
+        except:
+            pass  # Skip sound if file not found
+
+    def update_theme(self, *args):
+        self.theme = self.theme_var.get().lower()
+        bg_color = "#2C2C2C" if self.theme == "dark" else "#FFFFFF"
+        fg_color = "white" if self.theme == "dark" else "black"
+        self.root.configure(bg=bg_color)
+        for widget in self.root.winfo_children():
+            if isinstance(widget, tk.Label):
+                widget.configure(bg=bg_color, fg=fg_color)
+
+    def toggle_stopwatch(self):
+        if self.running:
+            self.elapsed_time += time.time() - self.start_time
+            self.running = False
+            self.visual_feedback(success=True)
+            self.play_sound("stop")
+        else:
+            if not self.session_id:
+                cursor = self.conn.cursor()
+                cursor.execute("INSERT INTO sessions (category, start_time) VALUES (?, ?)",
+                              (self.category_var.get(), datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+                self.session_id = cursor.lastrowid
+                self.conn.commit()
+            self.start_time = time.time()
+            self.running = True
+            self.visual_feedback(success=True)
+            self.play_sound("start")
+
+    def record_lap(self):
+        if not self.running:
+            messagebox.showwarning("Warning", "Stopwatch is not running!")
+            self.visual_feedback(success=False)
+            return
+        elapsed = time.time() - self.start_time + self.elapsed_time
+        lap_time = elapsed - sum(self.lap_times) if self.lap_times else elapsed
+        self.lap_times.append(lap_time)
+        cursor = self.conn.cursor()
+        cursor.execute("INSERT INTO laps (session_id, lap_number, lap_time) VALUES (?, ?, ?)",
+                      (self.session_id, len(self.lap_times), lap_time))
+        self.conn.commit()
+        self.lap_var.set(f"Laps: {len(self.lap_times)}")
+        self.visual_feedback(success=True)
+        self.play_sound("lap")
+
+    def reset_stopwatch(self):
+        self.running = False
+        self.elapsed_time = 0
+        self.start_time = 0
+        self.lap_times = []
+        self.session_id = None
+        self.time_var.set("00:00:00.0")
+        self.lap_var.set("Laps: 0")
+        self.visual_feedback(success=True)
+
+    def view_laps(self):
+        window = tk.Toplevel(self.root)
+        window.title("Lap Times")
+        window.geometry("400x300")
+        tree = ttk.Treeview(window, columns=("Session ID", "Lap Number", "Lap Time", "Category"), show="headings")
+        tree.heading("Session ID", text="Session ID")
+        tree.heading("Lap Number", text="Lap Number")
+        tree.heading("Lap Time", text="Lap Time (s)")
+        tree.heading("Category", text="Category")
+        tree.column("Session ID", width=80)
+        tree.column("Lap Number", width=80)
+        tree.column("Lap Time", width=100)
+        tree.column("Category", width=100)
+        tree.pack(fill="both", expand=True, padx=10, pady=10)
+        cursor = self.conn.cursor()
+        cursor.execute('''
+            SELECT laps.session_id, laps.lap_number, laps.lap_time, sessions.category
+            FROM laps
+            JOIN sessions ON laps.session_id = sessions.id
+            ORDER BY laps.session_id, laps.lap_number
+        ''')
+        for row in cursor.fetchall():
+            tree.insert("", tk.END, values=(row[0], row[1], f"{row[2]:.1f}", row[3]))
+
+    def view_statistics(self):
+        if not self.lap_times and not self.session_id:
+            messagebox.showinfo("Statistics", "No lap times recorded!")
+            return
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT lap_time FROM laps WHERE session_id = ?", (self.session_id,))
+        lap_times = [row[0] for row in cursor.fetchall()]
+        if not lap_times:
+            messagebox.showinfo("Statistics", "No lap times recorded in this session!")
+            return
+        avg_time = sum(lap_times) / len(lap_times)
+        min_time = min(lap_times)
+        max_time = max(lap_times)
+        messagebox.showinfo("Statistics", f"Average Lap Time: {avg_time:.1f}s\nMin Lap Time: {min_time:.1f}s\nMax Lap Time: {max_time:.1f}s")
+
+    def export_to_csv(self):
+        cursor = self.conn.cursor()
+        cursor.execute('''
+            SELECT laps.session_id, laps.lap_number, laps.lap_time, sessions.category
+            FROM laps
+            JOIN sessions ON laps.session_id = sessions.id
+        ''')
+        with open("stopwatch_laps.csv", "w", newline="") as file:
+            writer = csv.writer(file)
+            writer.writerow(["Session ID", "Lap Number", "Lap Time (s)", "Category"])
+            writer.writerows(cursor.fetchall())
+        messagebox.showinfo("Success", "Laps exported to stopwatch_laps.csv!")
+        self.visual_feedback(success=True)
+        self.play_sound("start")
+
+    def __del__(self):
+        self.conn.close()
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = StopwatchApp(root)
+    root.mainloop()
