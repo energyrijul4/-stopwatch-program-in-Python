@@ -205,12 +205,5 @@ class StopwatchApp:
             FROM laps
             JOIN sessions ON laps.session_id = sessions.id
         ''')
-        with open("stopwatch_laps.csv", "w", newline="") as file:
-            writer = csv.writer(file)
-            writer.writerow(["Session ID", "Lap Number", "Lap Time (s)", "Category"])
-            writer.writerows(cursor.fetchall())
-        messagebox.showinfo("Success", "Laps exported to stopwatch_laps.csv!")
-        self.visual_feedback(success=True)
-        self.play_sound("start")
-
+      
  
