@@ -1,0 +1,9 @@
+ try:
+        input("Press Enter to stop the stopwatch...")
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        
+        minutes = int(elapsed_time // 60)
+        seconds = elapsed_time % 60
+        
+        print(f"Time elapsed: {minutes} minutes {seconds:.2f} seconds")
